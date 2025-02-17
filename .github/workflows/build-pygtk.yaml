@@ -17,7 +17,8 @@ jobs:
     env:
       VCPKG_COMMIT: '058088532e33f23ac1ad31e32ad0bb1ab8e32195'
       VCPKG_DEFAULT_TRIPLET: 'x86-windows'
-      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg/installed
+      #VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg/installed
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg\downloads
       GTK_VERSION: 3.24
 
     steps:
@@ -29,37 +30,19 @@ jobs:
       with:
         arch: x86
 
-    - name: Install vcpkg dependencies
-      uses: lukka/run-vcpkg@v11
+    - name: vcpkg build
+      id: vcpkg
+      uses: johnwason/vcpkg-action@v6
       with:
-        vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
-
-    - name: Cache vcpkg
-      uses: actions/cache@v3
-      with:
-        path: |
-          ${{ github.workspace }}/vcpkg/installed
-          ${{ github.workspace }}/vcpkg/packages
-          ${{ github.workspace }}/vcpkg/downloads
-        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
-
-    - name: vcpkg install
-      shell: cmd
-      env:
-        VCPKG_BINARY_SOURCES: 'clear;nuget,GitHub,readwrite'
-      run: |
-        %VCPKG_ROOT%\vcpkg.exe install --triplet=${{ env.VCPKG_DEFAULT_TRIPLET }}
-
-    - name: test the build
-      shell: cmd
-      run: |
-        vcpkg_installed\${{ env.VCPKG_DEFAULT_TRIPLET }}\tools\python3\python.exe -V
-        vcpkg_installed\${{ env.VCPKG_DEFAULT_TRIPLET }}\tools\python3\python.exe ${{ github.workspace }}/show_versions.py
-        :: pip is not installed
-    
+        manifest-dir: ${{ github.workspace }}
+        triplet: ${{ env.VCPKG_DEFAULT_TRIPLET }}
+        token: ${{ github.token }}
+        github-binarycache: true
+  
     - name: Prepare for packing
       shell: pwsh
       run: |
+        Copy-Item -Path "vcpkg\installed" -Destination "vcpkg_installed" -Recurse
         Set-Content -Path "vcpkg_installed\placeholder.txt" -Value "This file makes upload-artifact keep all directory levels"
         Write-Host "Size before cleanup:"
         Get-ChildItem -Recurse vcpkg_installed | Measure-Object -Property Length -Sum |Select-Object @{Name = 'Sum'; Expression = {$_.Sum -as [string] -replace '\B(?=(\d{3})+(?!\d))', ','}}
@@ -67,6 +50,13 @@ jobs:
         Remove-Item "vcpkg_installed\${{ env.VCPKG_DEFAULT_TRIPLET }}\bin\*.pdb"
         Write-Host "Size after cleanup:"
         Get-ChildItem -Recurse vcpkg_installed | Measure-Object -Property Length -Sum |Select-Object @{Name = 'Sum'; Expression = {$_.Sum -as [string] -replace '\B(?=(\d{3})+(?!\d))', ','}}
+
+    - name: Test the build
+      shell: cmd
+      run: |
+        vcpkg_installed\${{ env.VCPKG_DEFAULT_TRIPLET }}\tools\python3\python.exe -V
+        vcpkg_installed\${{ env.VCPKG_DEFAULT_TRIPLET }}\tools\python3\python.exe ${{ github.workspace }}/show_versions.py
+        :: pip is not installed
 
     - name: Package the build
       shell: cmd
